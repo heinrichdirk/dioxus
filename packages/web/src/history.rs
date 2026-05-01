@@ -1,6 +1,25 @@
 use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
 use web_sys::{window, Event, History, ScrollRestoration, Window};
 
+#[wasm_bindgen::prelude::wasm_bindgen(inline_js = r#"
+export function document_directory_pathname_prefix() {
+    try {
+        const u = new URL(".", window.location.href);
+        let p = u.pathname;
+        if (p.length > 1 && p.endsWith("/")) {
+            p = p.slice(0, -1);
+        }
+        return p;
+    } catch {
+        return "/";
+    }
+}
+"#)]
+extern "C" {
+    #[wasm_bindgen(js_name = documentDirectoryPathnamePrefix)]
+    fn document_directory_pathname_prefix_js() -> String;
+}
+
 /// A [`dioxus_history::History`] provider that integrates with a browser via the [History API](https://developer.mozilla.org/en-US/docs/Web/API/History_API).
 ///
 /// # Prefix
@@ -13,6 +32,10 @@ use web_sys::{window, Event, History, ScrollRestoration, Window};
 ///
 /// Application developers are responsible for not rendering the router if the prefix is not present
 /// in the URL. Otherwise, if a router navigation is triggered, the prefix will be added.
+///
+/// When the CLI base path is `./` (document-relative assets), the history prefix is taken from the
+/// browser `new URL('.', location.href)` directory pathname so apps under a subdirectory (e.g.
+/// `/presence/presence-services-ui/`) do not navigate to the domain root on internal routing.
 pub struct WebHistory {
     do_scroll_restoration: bool,
     history: History,
@@ -54,11 +77,27 @@ impl WebHistory {
                 .expect("`history` can set scroll restoration");
         }
 
-        let prefix = prefix
+        // `./` means "this directory" for asset URLs; for the History API we must still use an
+        // origin pathname prefix (e.g. `/presence/app`) or pushState resolves `/` to the site root.
+        let normalized = prefix
             .or_else(dioxus_cli_config::web_base_path)
-            .and_then(|p| dioxus_cli_config::normalize_web_base_path(&p))
-            .map(|p| dioxus_cli_config::router_pathname_prefix(&p))
-            .filter(|p| p != "/");
+            .and_then(|p| dioxus_cli_config::normalize_web_base_path(&p));
+
+        let prefix = match normalized.as_deref() {
+            Some("./") => {
+                let doc = document_directory_pathname_prefix_js();
+                if doc.is_empty() || doc == "/" {
+                    None
+                } else {
+                    Some(doc)
+                }
+            }
+            Some(p) => {
+                let rp = dioxus_cli_config::router_pathname_prefix(p);
+                (rp != "/").then_some(rp)
+            }
+            None => None,
+        };
 
         Self {
             do_scroll_restoration,
