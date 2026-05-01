@@ -449,11 +449,11 @@ __wbg_init({{module_or_path: "{wasm_url}"}}).then((wasm) => {{
             )?;
         }
 
-        // Add the base path to the head if this is a debug build
-        if self.is_dev_build() {
-            if let Some(base_path) = self.web_public_base() {
-                head_resources.push_str(&format_base_path_meta_element(&base_path));
-            }
+        // Asset root meta: dev (hot reload) and release (so WASM `dioxus_cli_config::base_path()`
+        // matches static HTML links — release cannot rely on `option_env!("DIOXUS_ASSET_ROOT")` inside
+        // the dioxus-cli-config dependency crate.)
+        if let Some(base_path) = self.web_public_base() {
+            head_resources.push_str(&format_base_path_meta_element(&base_path));
         }
 
         // Inject any resources from manganis into the head

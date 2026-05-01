@@ -2352,7 +2352,7 @@
       "type": "object",
       "properties": {
         "base_path": {
-          "description": "URL prefix for the app and assets. Use a plain segment (e.g. myapp or /myapp/) for site-absolute paths (/myapp/...). Use ./ or ../ prefixes for document-relative URLs (./out/assets/...) for static hosting. Set . or ./ alone for URLs rooted next to the document (./assets/...). Omit or use null for site-root assets (/assets/...).",
+          "description": "URL prefix for the app and assets. Use a plain segment (e.g. myapp or /myapp/) for site-absolute paths (/myapp/...). Use ./ or ../ prefixes for document-relative URLs for static hosting. Set . or ./ alone so assets load as ./assets/... next to the HTML document. Important: with ./, the browser resolves URLs from the current path; if the page URL has no trailing slash (e.g. .../presence-services-ui), ./assets may wrongly resolve as .../presence/assets/—use a trailing slash on the app URL, or set base_path to the fixed deploy path (e.g. /presence/presence-services-ui). Omit or null for site-root /assets/...",
           "type": [
             "string",
             "null"

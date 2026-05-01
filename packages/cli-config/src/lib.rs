@@ -337,10 +337,15 @@ pub fn web_base_path() -> Option<String> {
         BASE_PATH.with(|f| f.get_or_init(|| get_meta_contents(ASSET_ROOT_ENV)).clone())
     }
 
-    // In release mode, we get the base path from the environment variable
+    // In release mode, prefer embedding from `dx build` (`DIOXUS_ASSET_ROOT`). That `option_env!`
+    // resolves when compiling *this* crate, so it is often absent for shipped dependencies; fall back
+    // to the `<meta name="DIOXUS_ASSET_ROOT">` that `dx` injects into index.html next to `./assets/` links.
     #[cfg(not(debug_assertions))]
     {
-        option_env!("DIOXUS_ASSET_ROOT").map(ToString::to_string)
+        match option_env!("DIOXUS_ASSET_ROOT") {
+            Some(s) if !s.is_empty() => Some(s.to_string()),
+            _ => get_meta_contents(ASSET_ROOT_ENV),
+        }
     }
 }
 
