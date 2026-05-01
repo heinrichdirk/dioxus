@@ -610,11 +610,8 @@ impl AppBuilder {
             envs.push(("RUST_BACKTRACE".into(), "1".to_string()));
         }
 
-        if let Some(base_path) = krate.trimmed_base_path() {
-            envs.push((
-                dioxus_cli_config::ASSET_ROOT_ENV.into(),
-                base_path.to_string(),
-            ));
+        if let Some(base_path) = krate.web_public_base() {
+            envs.push((dioxus_cli_config::ASSET_ROOT_ENV.into(), base_path));
         }
 
         if let Some(env_filter) = env::var_os("RUST_LOG").and_then(|e| e.into_string().ok()) {
@@ -1023,13 +1020,9 @@ impl AppBuilder {
     /// Check if we need to use https or not, and if so, add the protocol.
     /// Go to the basepath if that's set too.
     fn open_web(&self, address: SocketAddr) {
-        let base_path = self.build.base_path();
         let https = self.build.config.web.https.enabled.unwrap_or_default();
         let protocol = if https { "https" } else { "http" };
-        let base_path = match base_path {
-            Some(base_path) => format!("/{}", base_path.trim_matches('/')),
-            None => "".to_owned(),
-        };
+        let base_path = self.build.dev_server_http_path_prefix().unwrap_or_default();
         _ = open::that_detached(format!("{protocol}://{address}{base_path}"));
     }
 
@@ -1706,13 +1699,9 @@ impl AppBuilder {
                 // code --open-url "vscode://DioxusLabs.dioxus/debugger?uri=http://127.0.0.1:8080"
                 // todo - debugger could open to the *current* page afaik we don't have a way to have that info
                 let address = server.devserver_address();
-                let base_path = self.build.base_path();
                 let https = self.build.config.web.https.enabled.unwrap_or_default();
                 let protocol = if https { "https" } else { "http" };
-                let base_path = match base_path {
-                    Some(base_path) => format!("/{}", base_path.trim_matches('/')),
-                    None => "".to_owned(),
-                };
+                let base_path = self.build.dev_server_http_path_prefix().unwrap_or_default();
                 format!("{url_scheme}://DioxusLabs.dioxus/debugger?uri={protocol}://{address}{base_path}")
             }
 

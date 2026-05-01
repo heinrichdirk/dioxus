@@ -321,9 +321,11 @@ impl LaunchBuilder {
 
             // If there is a base path set, call server functions from that base path
             #[cfg(feature = "web")]
-            if let Some(base_path) = dioxus_cli_config::base_path() {
-                let base_path = base_path.trim_matches('/');
-                set_server_url(format!("{}/{}", get_server_url(), base_path).leak());
+            if let Some(raw) = dioxus_cli_config::base_path() {
+                if let Some(nb) = dioxus_cli_config::normalize_web_base_path(&raw) {
+                    let prefix = dioxus_cli_config::router_pathname_prefix(&nb);
+                    set_server_url(format!("{}{}", get_server_url(), prefix).leak());
+                }
             }
         }
 

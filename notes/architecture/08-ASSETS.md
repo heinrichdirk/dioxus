@@ -204,7 +204,7 @@ Asset::resolve()
 ```
 Asset::resolve()
     → Constructs path from:
-       * base_path() (e.g., "/app")
+       * base_path() — site-absolute (`myapp` → `/myapp/...`) or document-relative (`./out/...`) per `dioxus_cli_config::join_public_asset_url`
        * bundled_path from BundledAsset
     → Returns "/app/assets/{output-filename}"
 ```

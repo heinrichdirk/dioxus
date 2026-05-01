@@ -169,11 +169,15 @@ impl BuildRequest {
             for (idx, chunk) in modules.chunks.iter().enumerate() {
                 let path = bindgen_outdir.join(format!("chunk_{}_{}.wasm", idx, chunk.module_name));
                 wasm_opt::write_wasm(&chunk.bytes, &path, &wasm_opt_options).await?;
+                let chunk_url = self.join_public_asset_url(&format!(
+                    "assets/{}",
+                    assets
+                        .register_asset(&path, AssetOptions::builder().into_asset_options())?
+                        .bundled_path()
+                ));
                 writeln!(
-                    glue, "export const __wasm_split_load_chunk_{idx} = makeLoad(\"/{base_path}/assets/{url}\", [], fusedImports);",
-                    base_path = self.base_path_or_default(),
-                    url = assets
-                        .register_asset(&path, AssetOptions::builder().into_asset_options())?.bundled_path(),
+                    glue,
+                    "export const __wasm_split_load_chunk_{idx} = makeLoad(\"{chunk_url}\", [], fusedImports);",
                 )?;
             }
 
@@ -193,17 +197,16 @@ impl BuildRequest {
                     .as_ref()
                     .context("generated wasm-split bindgen module has no hash id?")?;
 
+                let mod_url = self.join_public_asset_url(&format!(
+                    "assets/{}",
+                    assets
+                        .register_asset(&path, AssetOptions::builder().into_asset_options())?
+                        .bundled_path()
+                ));
                 writeln!(
                     glue,
-                    "export const __wasm_split_load_{module}_{hash_id}_{comp_name} = makeLoad(\"/{base_path}/assets/{url}\", [{deps}], fusedImports);",
+                    "export const __wasm_split_load_{module}_{hash_id}_{comp_name} = makeLoad(\"{mod_url}\", [{deps}], fusedImports);",
                     module = module.module_name,
-
-                    base_path = self.base_path_or_default(),
-
-                    // Again, register this wasm with the asset system
-                    url = assets
-                        .register_asset(&path, AssetOptions::builder().into_asset_options())?
-                        .bundled_path(),
 
                     // This time, make sure to write the dependencies of this chunk
                     // The names here are again, hardcoded in wasm-split - fix this eventually.
@@ -286,13 +289,14 @@ impl BuildRequest {
             .append(true)
             .open(self.wasm_bindgen_js_output_file())?;
         let mut buf_writer = std::io::BufWriter::new(&mut js);
+        let wasm_url = self.join_public_asset_url(&wasm_path);
         writeln!(
             buf_writer,
             r#"
 globalThis.__wasm_split_main_initSync = initSync;
 
 // Actually perform the load
-__wbg_init({{module_or_path: "/{}/{wasm_path}"}}).then((wasm) => {{
+__wbg_init({{module_or_path: "{wasm_url}"}}).then((wasm) => {{
     // assign this module to be accessible globally
     globalThis.__dx_mainWasm = wasm;
     globalThis.__dx_mainInit = __wbg_init;
@@ -304,7 +308,6 @@ __wbg_init({{module_or_path: "/{}/{wasm_path}"}}).then((wasm) => {{
     }}
 }});
 "#,
-            self.base_path_or_default(),
         )?;
 
         Ok(())
@@ -448,26 +451,27 @@ __wbg_init({{module_or_path: "/{}/{wasm_path}"}}).then((wasm) => {{
 
         // Add the base path to the head if this is a debug build
         if self.is_dev_build() {
-            if let Some(base_path) = &self.trimmed_base_path() {
-                head_resources.push_str(&format_base_path_meta_element(base_path));
+            if let Some(base_path) = self.web_public_base() {
+                head_resources.push_str(&format_base_path_meta_element(&base_path));
             }
         }
 
         // Inject any resources from manganis into the head
         for asset in assets.unique_assets() {
             let asset_path = asset.bundled_path();
+            let href = self.join_public_asset_url(&format!("assets/{asset_path}"));
             match asset.options().variant() {
                 AssetVariant::Css(css_options) => {
                     if css_options.preloaded() {
                         _ = write!(
                             head_resources,
-                            r#"<link rel="preload" as="style" href="/{{base_path}}/assets/{asset_path}" crossorigin>"#
+                            r#"<link rel="preload" as="style" href="{href}" crossorigin>"#
                         );
                     }
                     if css_options.static_head() {
                         _ = write!(
                             head_resources,
-                            r#"<link rel="stylesheet" href="/{{base_path}}/assets/{asset_path}" type="text/css">"#
+                            r#"<link rel="stylesheet" href="{href}" type="text/css">"#
                         );
                     }
                 }
@@ -475,7 +479,7 @@ __wbg_init({{module_or_path: "/{}/{wasm_path}"}}).then((wasm) => {{
                     if image_options.preloaded() {
                         _ = write!(
                             head_resources,
-                            r#"<link rel="preload" as="image" href="/{{base_path}}/assets/{asset_path}" crossorigin>"#
+                            r#"<link rel="preload" as="image" href="{href}" crossorigin>"#
                         );
                     }
                 }
@@ -483,13 +487,13 @@ __wbg_init({{module_or_path: "/{}/{wasm_path}"}}).then((wasm) => {{
                     if js_options.preloaded() {
                         _ = write!(
                             head_resources,
-                            r#"<link rel="preload" as="script" href="/{{base_path}}/assets/{asset_path}" crossorigin>"#
+                            r#"<link rel="preload" as="script" href="{href}" crossorigin>"#
                         );
                     }
                     if js_options.static_head() {
                         _ = write!(
                             head_resources,
-                            r#"<script src="/{{base_path}}/assets/{asset_path}"></script>"#
+                            r#"<script src="{href}"></script>"#
                         );
                     }
                 }
@@ -513,21 +517,20 @@ __wbg_init({{module_or_path: "/{}/{wasm_path}"}}).then((wasm) => {{
         }
 
         // If not, insert the script
+        let js_url = self.join_public_asset_url(&self.bundled_js_path(assets));
         *html = html.replace(
             "</body",
             &format!(
-                r#"<script type="module" async src="/{}/{}"></script>
+                r#"<script type="module" async src="{js_url}"></script>
             </body"#,
-                self.base_path_or_default(),
-                self.bundled_js_path(assets)
             ),
         );
     }
 
     /// Replace any special placeholders in the HTML with resolved values
     fn replace_template_placeholders(&self, html: &mut String, wasm_path: &str, js_path: &str) {
-        let base_path = self.base_path_or_default();
-        *html = html.replace("{base_path}", base_path);
+        let base_path = self.web_public_base().unwrap_or_default();
+        *html = html.replace("{base_path}", &base_path);
 
         let app_name = &self.executable_name();
 

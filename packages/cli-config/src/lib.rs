@@ -216,12 +216,72 @@ pub fn is_cli_enabled() -> bool {
     std::env::var(CLI_ENABLED_ENV).is_ok()
 }
 
+/// Normalize `web.app.base_path` / CLI `--base-path` for URL emission.
+///
+/// Trims ASCII whitespace and **only outer** `/` (preserves `./`, `../`).
+/// Returns [`None`] when there is no prefix: empty input, `.`, or `./` alone (after normalization).
+pub fn normalize_web_base_path(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    let s = s.trim_start_matches('/').trim_end_matches('/');
+    if s.is_empty() || s == "." {
+        return None;
+    }
+    Some(s.to_string())
+}
+
+/// `true` when the base should be resolved relative to the document URL (`./foo`, `../bar`).
+pub fn is_relative_public_base(base_path: &str) -> bool {
+    base_path.starts_with("./") || base_path.starts_with("../")
+}
+
+/// Join the configured app base with a URL tail such as `assets/logo.png`.
+///
+/// Site-absolute bases (`myapp`, `/myapp`) become `/myapp/assets/...`. Document-relative bases
+/// (`./out`, `../dist`) become `./out/assets/...` without a leading slash on the whole URL.
+pub fn join_public_asset_url(base: Option<&str>, tail: &str) -> String {
+    let tail = tail.trim_start_matches('/');
+    match base.filter(|b| !b.is_empty()) {
+        None => format!("/{tail}"),
+        Some(b) if is_relative_public_base(b) => {
+            let b = b.trim_end_matches('/');
+            format!("{b}/{tail}")
+        }
+        Some(b) => {
+            let b = b.trim_start_matches('/').trim_end_matches('/');
+            format!("/{b}/{tail}")
+        }
+    }
+}
+
+/// Directory URL for bundled assets (always ends with `/`).
+pub fn bundled_assets_directory_url(base_path: Option<&str>) -> String {
+    let path = join_public_asset_url(base_path, "assets");
+    format!("{}/", path.trim_end_matches('/'))
+}
+
+/// Pathname prefix for the router, history providers, Axum nesting, and `location.pathname`
+/// (e.g. `/myapp`, `/test`).
+///
+/// Document-relative bases (`./foo`) map to `/foo` so they align with HTTP paths. This is **not**
+/// the same string as [`join_public_asset_url`] for assets, which may stay `./foo/...`.
+pub fn router_pathname_prefix(public_base: &str) -> String {
+    let inner = public_base
+        .strip_prefix("./")
+        .or_else(|| public_base.strip_prefix("../"))
+        .unwrap_or(public_base);
+    let inner = inner.trim_matches('/');
+    format!("/{inner}")
+}
+
 /// Get the path where the application will be served from.
 ///
 /// This is used by the router to format the URLs. For example, an app with a base path of `dogapp` will
 /// be served at `http://localhost:8080/dogapp`.
 ///
 /// All assets will be served from this base path as well, ie `http://localhost:8080/dogapp/assets/logo.png`.
+///
+/// Prefixes starting with `./` or `../` are resolved **relative to the document URL** (for static hosting
+/// without a fixed origin path). Other values are **site-absolute** paths (`/myapp/...`).
 #[allow(unreachable_code)]
 pub fn base_path() -> Option<String> {
     // This may trigger when compiling to the server if you depend on another crate that pulls in
@@ -333,4 +393,35 @@ pub fn build_id() -> u64 {
 /// The product name of the bundled application.
 pub fn product_name() -> Option<String> {
     read_env_config!("DIOXUS_PRODUCT_NAME")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_outer_slash_only() {
+        assert_eq!(normalize_web_base_path("./app").as_deref(), Some("./app"));
+        assert_eq!(normalize_web_base_path("/myapp/").as_deref(), Some("myapp"));
+        assert_eq!(normalize_web_base_path("."), None);
+    }
+
+    #[test]
+    fn join_public_asset_url_modes() {
+        assert_eq!(join_public_asset_url(None, "assets/a.js"), "/assets/a.js");
+        assert_eq!(
+            join_public_asset_url(Some("myapp"), "assets/a.js"),
+            "/myapp/assets/a.js"
+        );
+        assert_eq!(
+            join_public_asset_url(Some("./out"), "wasm/x.wasm"),
+            "./out/wasm/x.wasm"
+        );
+    }
+
+    #[test]
+    fn router_pathname_maps_relative_segment() {
+        assert_eq!(router_pathname_prefix("./myapp"), "/myapp");
+        assert_eq!(router_pathname_prefix("myapp"), "/myapp");
+    }
 }

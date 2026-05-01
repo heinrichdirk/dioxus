@@ -268,13 +268,20 @@ fn apply_base_path<M: 'static>(
     cfg: ServeConfig,
     base_path: Option<String>,
 ) -> Router {
-    if let Some(base_path) = base_path {
-        let base_path = base_path.trim_matches('/');
+    if let Some(raw) = base_path {
+        let Some(normalized) = dioxus_cli_config::normalize_web_base_path(&raw) else {
+            return router;
+        };
+        let pathname = dioxus_cli_config::router_pathname_prefix(&normalized);
+        let segment = pathname.trim_start_matches('/');
+        if segment.is_empty() {
+            return router;
+        }
 
         // If there is a base path, nest the router under it and serve the root route manually
         // Nesting a route in axum only serves /base_path or /base_path/ not both
-        router = Router::new().nest(&format!("/{base_path}/"), router).route(
-            &format!("/{base_path}"),
+        router = Router::new().nest(&format!("/{segment}/"), router).route(
+            &format!("/{segment}"),
             axum::routing::method_routing::get(
                 |state: State<FullstackState>, mut request: Request<Body>| async move {
                     // The root of the base path always looks like the root from dioxus fullstack

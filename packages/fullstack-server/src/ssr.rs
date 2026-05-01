@@ -182,11 +182,14 @@ impl SsrRendererPool {
 
             // If there is a base path, trim the base path from the route and add the base path formatting to the
             // history provider
-            let history = if let Some(base_path) = base_path() {
-                let base_path = base_path.trim_matches('/');
-                let base_path = format!("/{base_path}");
-                let route = route.strip_prefix(&base_path).unwrap_or(&route);
-                dioxus_history::MemoryHistory::with_initial_path(route).with_prefix(base_path)
+            let history = if let Some(raw) = base_path() {
+                if let Some(nb) = dioxus_cli_config::normalize_web_base_path(&raw) {
+                    let prefix = dioxus_cli_config::router_pathname_prefix(&nb);
+                    let route = route.strip_prefix(&prefix).unwrap_or(&route);
+                    dioxus_history::MemoryHistory::with_initial_path(route).with_prefix(prefix)
+                } else {
+                    dioxus_history::MemoryHistory::with_initial_path(&route)
+                }
             } else {
                 dioxus_history::MemoryHistory::with_initial_path(&route)
             };

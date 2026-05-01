@@ -1172,10 +1172,15 @@ impl BuildRequest {
             //
             // ie we would've shipped `/Users/foo/Projects/dioxus/target/dx/project/debug/web/public/wasm/lib.wasm`
             //    but we want to ship `/wasm/lib.wasm`
-            jump_table.lib = PathBuf::from(
-                "/".to_string() + base_path.unwrap_or_default().trim_start_matches('/'),
-            )
-            .join(jump_table.lib.strip_prefix(root_dir).unwrap())
+            let relative = jump_table.lib.strip_prefix(root_dir).unwrap();
+            let rel_str = relative.to_string_lossy().replace('\\', "/");
+            let url_str = dioxus_cli_config::join_public_asset_url(
+                base_path
+                    .and_then(|raw| dioxus_cli_config::normalize_web_base_path(raw))
+                    .as_deref(),
+                rel_str.trim_start_matches('/'),
+            );
+            jump_table.lib = PathBuf::from(url_str)
         }
 
         Ok(jump_table)

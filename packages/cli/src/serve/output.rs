@@ -731,8 +731,8 @@ impl Output {
                     .runner
                     .client
                     .build
-                    .base_path()
-                    .map(|f| format!("/{f}/"))
+                    .dev_server_http_path_prefix()
+                    .map(|p| format!("{p}/"))
                     .unwrap_or_default()
             )
             .blue(),

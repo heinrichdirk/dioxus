@@ -1887,8 +1887,8 @@ impl BuildRequest {
         // If this is a release build, bake the base path and title into the binary with env vars.
         // todo: should we even be doing this? might be better being a build.rs or something else.
         if self.release {
-            if let Some(base_path) = self.trimmed_base_path() {
-                env_vars.push((ASSET_ROOT_ENV.into(), base_path.to_string().into()));
+            if let Some(base_path) = self.web_public_base() {
+                env_vars.push((ASSET_ROOT_ENV.into(), base_path.into()));
             }
             env_vars.push((
                 APP_TITLE_ENV.into(),
@@ -2956,16 +2956,21 @@ impl BuildRequest {
             .filter(|_| matches!(self.bundle, BundleFormat::Web | BundleFormat::Server))
     }
 
-    /// Get the normalized base path for the application with `/` trimmed from both ends.
-    pub(crate) fn trimmed_base_path(&self) -> Option<&str> {
+    /// Normalized web base path for URLs (`None` when the app is served from the site root).
+    ///
+    /// Prefer this over ad-hoc trimming: outer `/` only (preserves `./` / `../`), and `.` / `./` alone
+    /// mean no prefix.
+    pub(crate) fn web_public_base(&self) -> Option<String> {
         self.base_path()
-            .map(|p| p.trim_matches('/'))
-            .filter(|p| !p.is_empty())
+            .and_then(|p| dioxus_cli_config::normalize_web_base_path(p))
     }
 
-    /// Get the trimmed base path or `.` if no base path is set
-    pub(crate) fn base_path_or_default(&self) -> &str {
-        self.trimmed_base_path().unwrap_or(".")
+    /// Join a path segment such as `assets/foo.js` or `wasm/app_bg.wasm` with the configured base.
+    ///
+    /// Site-absolute bases become `/base/tail`; document-relative bases (`./x`, `../x`) become
+    /// `./x/tail` with no leading slash on the whole URL.
+    pub(crate) fn join_public_asset_url(&self, tail: &str) -> String {
+        dioxus_cli_config::join_public_asset_url(self.web_public_base().as_deref(), tail)
     }
 
     /// Get the path to the package manifest directory
@@ -3121,5 +3126,20 @@ impl BuildRequest {
         }
 
         deps
+    }
+
+    /// HTTP path prefix for the dev static file server (`/foo`), mapping document-relative bases
+    /// like `./foo` to `/foo` since Axum routes are always origin-absolute.
+    pub(crate) fn dev_server_http_path_prefix(&self) -> Option<String> {
+        let b = self.web_public_base()?;
+        let inner = b
+            .strip_prefix("./")
+            .or_else(|| b.strip_prefix("../"))
+            .unwrap_or(&b);
+        let inner = inner.trim_matches('/');
+        if inner.is_empty() {
+            return None;
+        }
+        Some(format!("/{inner}"))
     }
 }

@@ -495,15 +495,11 @@ fn build_devserver_router(
     } else {
         // Otherwise, just serve the dir ourselves
         // Route file service to output the .wasm and assets if this is a web build
-        let base_path = format!(
-            "/{}",
-            runner
-                .client()
-                .build
-                .base_path()
-                .unwrap_or_default()
-                .trim_matches('/')
-        );
+        let base_path = runner
+            .client()
+            .build
+            .dev_server_http_path_prefix()
+            .unwrap_or_else(|| "/".to_string());
         if base_path == "/" {
             router = router.fallback_service(build_serve_dir(runner));
         } else {

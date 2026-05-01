@@ -55,15 +55,10 @@ impl WebHistory {
         }
 
         let prefix = prefix
-            // If there isn't a base path, try to grab one from the CLI
             .or_else(dioxus_cli_config::web_base_path)
-            // Normalize the prefix to start and end with no slashes
-            .as_ref()
-            .map(|prefix| prefix.trim_matches('/'))
-            // If the prefix is empty, don't add it
-            .filter(|prefix| !prefix.is_empty())
-            // Otherwise, start with a slash
-            .map(|prefix| format!("/{prefix}"));
+            .and_then(|p| dioxus_cli_config::normalize_web_base_path(&p))
+            .map(|p| dioxus_cli_config::router_pathname_prefix(&p))
+            .filter(|p| p != "/");
 
         Self {
             do_scroll_restoration,
