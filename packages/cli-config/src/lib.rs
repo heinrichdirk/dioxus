@@ -219,12 +219,25 @@ pub fn is_cli_enabled() -> bool {
 /// Normalize `web.app.base_path` / CLI `--base-path` for URL emission.
 ///
 /// Trims ASCII whitespace and **only outer** `/` (preserves `./`, `../`).
-/// Returns [`None`] when there is no prefix: empty input, `.`, or `./` alone (after normalization).
+///
+/// - Empty input → [`None`] (assets at site root: `/assets/...`).
+/// - Explicit `.` or `./` alone → [`Some`]("`./`"): document-relative URLs (`./assets/...`).
+/// - Otherwise returns the trimmed path (e.g. `myapp`, `./out/foo`).
 pub fn normalize_web_base_path(raw: &str) -> Option<String> {
-    let s = raw.trim();
-    let s = s.trim_start_matches('/').trim_end_matches('/');
-    if s.is_empty() || s == "." {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
         return None;
+    }
+    // Explicit "current directory" — join as `./assets/...`, not `/assets/...`.
+    if trimmed == "." || trimmed == "./" {
+        return Some("./".to_string());
+    }
+    let s = trimmed.trim_start_matches('/').trim_end_matches('/');
+    if s.is_empty() {
+        return None;
+    }
+    if s == "." {
+        return Some("./".to_string());
     }
     Some(s.to_string())
 }
@@ -403,7 +416,8 @@ mod tests {
     fn normalize_outer_slash_only() {
         assert_eq!(normalize_web_base_path("./app").as_deref(), Some("./app"));
         assert_eq!(normalize_web_base_path("/myapp/").as_deref(), Some("myapp"));
-        assert_eq!(normalize_web_base_path("."), None);
+        assert_eq!(normalize_web_base_path(".").as_deref(), Some("./"));
+        assert_eq!(normalize_web_base_path("./").as_deref(), Some("./"));
     }
 
     #[test]
@@ -417,11 +431,24 @@ mod tests {
             join_public_asset_url(Some("./out"), "wasm/x.wasm"),
             "./out/wasm/x.wasm"
         );
+        assert_eq!(
+            join_public_asset_url(Some("./"), "assets/a.js"),
+            "./assets/a.js"
+        );
     }
 
     #[test]
     fn router_pathname_maps_relative_segment() {
         assert_eq!(router_pathname_prefix("./myapp"), "/myapp");
         assert_eq!(router_pathname_prefix("myapp"), "/myapp");
+        assert_eq!(router_pathname_prefix("./"), "/");
+    }
+
+    #[test]
+    fn bundled_assets_url_dot_slash() {
+        assert_eq!(
+            bundled_assets_directory_url(Some("./")),
+            "./assets/"
+        );
     }
 }

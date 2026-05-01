@@ -2352,7 +2352,7 @@
       "type": "object",
       "properties": {
         "base_path": {
-          "description": "URL prefix for the app and assets. Use a plain segment (e.g. myapp or /myapp/) for site-absolute paths (/myapp/...). Use ./ or ../ prefixes for document-relative URLs (./out/assets/...) for static hosting. Empty, ., or ./ alone means no prefix.",
+          "description": "URL prefix for the app and assets. Use a plain segment (e.g. myapp or /myapp/) for site-absolute paths (/myapp/...). Use ./ or ../ prefixes for document-relative URLs (./out/assets/...) for static hosting. Set . or ./ alone for URLs rooted next to the document (./assets/...). Omit or use null for site-root assets (/assets/...).",
           "type": [
             "string",
             "null"

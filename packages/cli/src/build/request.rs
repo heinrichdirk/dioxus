@@ -2958,8 +2958,8 @@ impl BuildRequest {
 
     /// Normalized web base path for URLs (`None` when the app is served from the site root).
     ///
-    /// Prefer this over ad-hoc trimming: outer `/` only (preserves `./` / `../`), and `.` / `./` alone
-    /// mean no prefix.
+    /// Prefer this over ad-hoc trimming: outer `/` only (preserves `./` / `../`). Explicit `.` / `./`
+    /// alone become `./` so asset URLs are `./assets/...` instead of `/assets/...`.
     pub(crate) fn web_public_base(&self) -> Option<String> {
         self.base_path()
             .and_then(|p| dioxus_cli_config::normalize_web_base_path(p))

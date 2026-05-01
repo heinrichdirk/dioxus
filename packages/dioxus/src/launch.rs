@@ -324,7 +324,10 @@ impl LaunchBuilder {
             if let Some(raw) = dioxus_cli_config::base_path() {
                 if let Some(nb) = dioxus_cli_config::normalize_web_base_path(&raw) {
                     let prefix = dioxus_cli_config::router_pathname_prefix(&nb);
-                    set_server_url(format!("{}{}", get_server_url(), prefix).leak());
+                    // `./` alone maps to pathname `/`; do not append a bare slash to the server URL.
+                    if prefix != "/" {
+                        set_server_url(format!("{}{}", get_server_url(), prefix).leak());
+                    }
                 }
             }
         }
