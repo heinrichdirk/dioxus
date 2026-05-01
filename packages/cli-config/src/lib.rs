@@ -317,35 +317,77 @@ pub fn base_path() -> Option<String> {
             }
             return selector.content;
         }
+
+        export function documentDirectoryPathnameForAssetBaseInfer() {
+            try {
+                const u = new URL(".", window.location.href);
+                let p = u.pathname;
+                if (p.length > 1 && p.endsWith("/")) {
+                    p = p.slice(0, -1);
+                }
+                return p === "/" ? "" : p;
+            } catch {
+                return "";
+            }
+        }
     "#)]
 extern "C" {
     #[wasm_bindgen(js_name = getMetaContents)]
     pub fn get_meta_contents(selector: &str) -> Option<String>;
+
+    #[wasm_bindgen(js_name = documentDirectoryPathnameForAssetBaseInfer)]
+    fn document_directory_pathname_for_asset_base_infer_js() -> String;
+}
+
+#[cfg(all(feature = "web", target_arch = "wasm32"))]
+fn inferred_site_pathname_asset_base_from_location() -> Option<String> {
+    let p = document_directory_pathname_for_asset_base_infer_js();
+    (!p.is_empty()).then_some(p)
+}
+
+#[cfg(not(all(feature = "web", target_arch = "wasm32")))]
+#[allow(dead_code)]
+fn inferred_site_pathname_asset_base_from_location() -> Option<String> {
+    None
+}
+
+/// Base path discovery for Wasm web (called from [`base_path()`] on `wasm32`).
+#[cfg(all(feature = "web", target_arch = "wasm32"))]
+fn wasm_web_base_path_resolve() -> Option<String> {
+    // 1) `<meta name="DIOXUS_ASSET_ROOT">` (`dx`-injected or hand-authored)
+    let from_meta = get_meta_contents(ASSET_ROOT_ENV);
+    if let Some(ref m) = from_meta {
+        if !m.trim().is_empty() {
+            return Some(m.trim().to_string());
+        }
+    }
+
+    // 2) Prefer `cargo` env from `dx` when compiling the app (may be empty inside `dioxus-cli-config` itself)
+    if let Some(s) = option_env!("DIOXUS_ASSET_ROOT") {
+        if !s.trim().is_empty() {
+            return Some(s.trim().to_string());
+        }
+    }
+
+    // 3) Path-prefixed deploys without meta (custom index.html): infer site path from URL so
+    // `Asset::resolve()` does not fall back to origin `/assets/...`.
+    inferred_site_pathname_asset_base_from_location()
 }
 
 /// Get the path where the application is served from in the browser.
 ///
-/// This uses wasm_bindgen on the browser to extract the base path from a meta element.
+/// This uses wasm_bindgen on the browser to extract the base path from a meta element,
+/// optionally `DIOXUS_ASSET_ROOT` embedded at dependency build time (often unused), then the
+/// current document URL pathname (for Kubernetes / nginx path-prefix installs).
 #[cfg(feature = "web")]
 pub fn web_base_path() -> Option<String> {
-    // In debug mode, we get the base path from the meta element which can be hot reloaded and changed without recompiling
-    #[cfg(debug_assertions)]
+    #[cfg(all(target_arch = "wasm32"))]
     {
-        thread_local! {
-            static BASE_PATH: std::cell::OnceCell<Option<String>> = const { std::cell::OnceCell::new() };
-        }
-        BASE_PATH.with(|f| f.get_or_init(|| get_meta_contents(ASSET_ROOT_ENV)).clone())
+        return wasm_web_base_path_resolve();
     }
-
-    // In release mode, prefer embedding from `dx build` (`DIOXUS_ASSET_ROOT`). That `option_env!`
-    // resolves when compiling *this* crate, so it is often absent for shipped dependencies; fall back
-    // to the `<meta name="DIOXUS_ASSET_ROOT">` that `dx` injects into index.html next to `./assets/` links.
-    #[cfg(not(debug_assertions))]
+    #[cfg(not(target_arch = "wasm32"))]
     {
-        match option_env!("DIOXUS_ASSET_ROOT") {
-            Some(s) if !s.is_empty() => Some(s.to_string()),
-            _ => get_meta_contents(ASSET_ROOT_ENV),
-        }
+        None
     }
 }
 
